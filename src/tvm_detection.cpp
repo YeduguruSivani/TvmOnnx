@@ -131,7 +131,5 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_
         cv::putText(resized_frame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 0);
     }
 
-
-
     return result;
 }

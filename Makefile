@@ -1,51 +1,48 @@
-# Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall
+CXXFLAGS = -std=c++17 -O2 -Wall -Iinclude
 
-# Paths to dependencies
+#OPENCV
 OPENCV_INCLUDE = -I /usr/include/opencv4
 OPENCV_LIB = -L/home/ubuntu6/opencv_20 
+#TVM
 TVM_INCLUDE = -I /home/ubuntu6/tvm/3rdparty/dlpack/include \
 			-I /home/ubuntu6/tvm/3rdparty/dmlc-core/include \
 			-I /home/ubuntu6/tvm/src/runtime \
 			-I /home/ubuntu6/tvm/3rdparty/compiler-rt \
 			-I /home/ubuntu6/tvm/include 
 TVM_LIB = -L/home/ubuntu6/tvm/build -Wl,-rpath=/home/ubuntu6/tvm/build
-ONNX_INCLUDE = 
-ONNX_LIB = 
+#ONNX
+ONNX_INCLUDE = -I./lib/onnxruntime/include
+ONNX_LIB = -L./lib/onnxruntime/lib -Wl,-rpath=./lib/onnxruntime/lib 
 
-# Output executable
-TARGET = app
-
-# Source files
-SRCS = main.cpp SafeQueue.cpp Detector.cpp App.cpp TVMDetector.cpp ONNXDetector.cpp
-OBJS = $(SRCS:.cpp=.o)
-
-# Libraries
-LIBS = -lopencv_videoio \
+LIB_FLAGS = -lopencv_videoio \
     -lopencv_video \
     -lopencv_core \
     -lopencv_imgproc \
     -lopencv_imgcodecs \
     -lopencv_highgui \
     -ltvm_runtime \
-    -lpthread 
-# Include directories
-INCLUDES = -I$(OPENCV_INCLUDE) -I$(TVM_INCLUDE) -I$(ONNX_INCLUDE)
+    -lpthread  \
+	-lonnxruntime
 
-# Library directories
-LIBDIRS = -L$(OPENCV_LIB) -L$(TVM_LIB) -L$(ONNX_LIB)
+TARGET = build
+SRC = src
+OBJ = obj
+DATA = data
 
-# Build rules
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJS) -o $(TARGET) $(LIBDIRS) $(LIBS)
+INCLUDES = $(OPENCV_INCLUDE) $(ONNX_INCLUDE) $(TVM_INCLUDE) 
+LIBS = $(OPENCV_LIB) $(ONNX_LIB) $(TVM_LIB) 
 
-# Object file rules
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+all: $(TARGET)/people_count
 
-# Clean up build files
+directories:
+	mkdir -p $(OBJ) $(TARGET) $(DATA)
+
+$(TARGET)/people_count: $(OBJ)/main.o $(OBJ)/onnx_detection.o $(OBJ)/tvm_detection.o
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(LIBS) $^ -o $@ $(LIB_FLAGS)
+
+$(OBJ)/%.o: $(SRC)/%.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@
+
 clean:
-	rm -f $(OBJS) $(TARGET)
-
-.PHONY: clean
+	rm -f $(OBJ)/* $(TARGET)/*
