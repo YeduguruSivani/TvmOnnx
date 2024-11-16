@@ -1,5 +1,4 @@
-#include "App.h"
-#include "SafeQueue.h"
+#include "Detector.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -7,7 +6,7 @@
 
 App::App(std::unique_ptr<DetectorFactory> factory) : detectorFactory(std::move(factory)) {}
 
-void App::run(const std::string& modelPath, const std::string& videoPath) {
+void App::run(std::string& modelPath, std::string& videoPath) {
     auto detector = detectorFactory->createDetector();
     detector->loadModel(modelPath);
     Data data(videoPath);
@@ -54,7 +53,7 @@ void App::run(const std::string& modelPath, const std::string& videoPath) {
     std::cout << "Video processing completed successfully." << std::endl;
 }
 
-Data::Data(std::string videoPath) {
+Data::Data(std::string& videoPath) {
     std::string outputPath = videoPath.substr(0, videoPath.length()-4) + "_Detection" + videoPath.substr(videoPath.length()-4, videoPath.length());
     cap = cv::VideoCapture(videoPath);
     if (!cap.isOpened())
@@ -87,11 +86,3 @@ cv::Mat Data::GetData(){
     cap.read(frame);
     return frame;
 } 
-
-// int main() {
-//     std::unique_ptr<DetectorFactory> factory = std::make_unique<ONNXDetectorFactory>();
-//     App app(std::move(factory));
-//     app.run("model.onnx", "video.mp4");
-
-//     return 0;
-// }

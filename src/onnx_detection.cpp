@@ -45,10 +45,10 @@ cv::Mat ONNXDetector::detect(cv::Mat& image, float confThreshold, float iouThres
         std::cerr << "Error: No output tensor returned from inference." << std::endl;
     }
 
-    float *output_data = output_tensors.front().GetTensorMutableData<float>();
-    std::vector<int64_t> output_shape = output_tensors.front().GetTensorTypeAndShapeInfo().GetShape();
+    float *data = output_tensors.front().GetTensorMutableData<float>();
+    std::vector<int64_t> shape = output_tensors.front().GetTensorTypeAndShapeInfo().GetShape();
 
-    cv::Mat detection = postprocess(image, output_data, output_shape, confThreshold, iouThreshold);
+    cv::Mat detection = postprocess(image, data, shape, confThreshold, iouThreshold);
 
     return detection;
 }
@@ -91,13 +91,13 @@ void nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
 
 cv::Mat ONNXDetector::preprocess(cv::Mat& image, std::vector<float>& input_tensor) {
     cv::Mat resizedImage;
-    cv::resize(frame, resizedImage, cv::Size(640, 640));
+    cv::resize(image, resizedImage, cv::Size(640, 640));
     resizedImage.convertTo(resizedImage, CV_32F, 1.0 / 255.0);
     std::vector<cv::Mat> channels(3);
     cv::split(resizedImage, channels);
     for (auto &ch : channels)
     {
-        input_tensor_values.insert(input_tensor_values.end(), (float *)ch.datastart, (float *)ch.dataend);
+        input_tensor.insert(input_tensor.end(), (float *)ch.datastart, (float *)ch.dataend);
     }
     return resizedImage;
 }
@@ -105,17 +105,17 @@ cv::Mat ONNXDetector::preprocess(cv::Mat& image, std::vector<float>& input_tenso
 cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold) {
     std::vector<std::vector<float>> boxes;
     cv::Mat resizedImage;
-    cv::resize(frame, resizedImage, cv::Size(640, 640));
+    cv::resize(image, resizedImage, cv::Size(640, 640));
     resizedImage.convertTo(resizedImage, CV_32F, 1.0 / 255.0);
-    for (int i = 0; i < output_shape[2]; ++i)
+    for (int i = 0; i < shape[2]; ++i)
     {
-        float cx = output_data[i + output_shape[2] * 0];
-        float cy = output_data[i + output_shape[2] * 1];
-        float w = output_data[i + output_shape[2] * 2];
-        float h = output_data[i + output_shape[2] * 3];
-        float score_1 = round(output_data[i + output_shape[2] * 4] * 100) / 100.0;
-        float score_2 = round(output_data[i + output_shape[2] * 5] * 100) / 100.0;
-        float score_3 = round(output_data[i + output_shape[2] * 6] * 100) / 100.0;
+        float cx = data[i + shape[2] * 0];
+        float cy = data[i + shape[2] * 1];
+        float w = data[i + shape[2] * 2];
+        float h = data[i + shape[2] * 3];
+        float score_1 = round(data[i + shape[2] * 4] * 100) / 100.0;
+        float score_2 = round(data[i + shape[2] * 5] * 100) / 100.0;
+        float score_3 = round(data[i + shape[2] * 6] * 100) / 100.0;
 
         if (score_1 > 0.1 || score_2 > 0.1 || score_3 > 0.1)
         {
