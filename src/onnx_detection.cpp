@@ -53,42 +53,6 @@ cv::Mat ONNXDetector::detect(cv::Mat& image, float confThreshold, float iouThres
     return detection;
 }
 
-float iou(const std::vector<float> &boxA, const std::vector<float> &boxB)
-{
-    const float eps = 1e-6;
-    float areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
-    float areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
-    float x1 = std::max(boxA[0], boxB[0]);
-    float y1 = std::max(boxA[1], boxB[1]);
-    float x2 = std::min(boxA[2], boxB[2]);
-    float y2 = std::min(boxA[3], boxB[3]);
-    float w = std::max(0.f, x2 - x1);
-    float h = std::max(0.f, y2 - y1);
-    float inter = w * h;
-    return inter / (areaA + areaB - inter + eps);
-}
-
-void nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
-{
-    std::sort(boxes.begin(), boxes.end(), [](const std::vector<float> &boxA, const std::vector<float> &boxB)
-              { return boxA[4] > boxB[4]; });
-    for (int i = 0; i < boxes.size(); ++i)
-    {
-        if (boxes[i][4] == 0.f)
-            continue;
-        for (int j = i + 1; j < boxes.size(); ++j)
-        {
-            if (boxes[i][5] != boxes[j][5])
-                continue;
-            if (iou(boxes[i], boxes[j]) > iou_threshold)
-                boxes[j][4] = 0.f;
-        }
-    }
-    boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [](const std::vector<float> &box)
-                               { return box[4] == 0.f; }),
-                boxes.end());
-}
-
 cv::Mat ONNXDetector::preprocess(cv::Mat& image, std::vector<float>& input_tensor) {
     cv::Mat resizedImage;
     cv::resize(image, resizedImage, cv::Size(640, 640));
@@ -139,7 +103,7 @@ cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64
         }
     }
     float iou_threshold = 0.3;
-    nms(boxes, iou_threshold);
+    Nms(boxes, iou_threshold);
     std::cout << "Number of boxes :" << boxes.size() << std::endl;
 
     for (const auto &box : boxes)
@@ -167,4 +131,40 @@ cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64
     cv::Mat output_frame;
     resizedImage.convertTo(output_frame, CV_8U, 255.0);
     return output_frame;
+}
+
+float ONNXDetector::Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)
+{
+    const float eps = 1e-6;
+    float areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
+    float areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
+    float x1 = std::max(boxA[0], boxB[0]);
+    float y1 = std::max(boxA[1], boxB[1]);
+    float x2 = std::min(boxA[2], boxB[2]);
+    float y2 = std::min(boxA[3], boxB[3]);
+    float w = std::max(0.f, x2 - x1);
+    float h = std::max(0.f, y2 - y1);
+    float inter = w * h;
+    return inter / (areaA + areaB - inter + eps);
+}
+
+void ONNXDetector::Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
+{
+    std::sort(boxes.begin(), boxes.end(), [](const std::vector<float> &boxA, const std::vector<float> &boxB)
+              { return boxA[4] > boxB[4]; });
+    for (int i = 0; i < boxes.size(); ++i)
+    {
+        if (boxes[i][4] == 0.f)
+            continue;
+        for (int j = i + 1; j < boxes.size(); ++j)
+        {
+            if (boxes[i][5] != boxes[j][5])
+                continue;
+            if (Iou(boxes[i], boxes[j]) > iou_threshold)
+                boxes[j][4] = 0.f;
+        }
+    }
+    boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [](const std::vector<float> &box)
+                               { return box[4] == 0.f; }),
+                boxes.end());
 }

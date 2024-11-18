@@ -1,13 +1,17 @@
 #include <opencv2/opencv.hpp>
-// #include <tvm/runtime/module.h>
-// #include <tvm/runtime/registry.h>
-// #include <tvm/runtime/packed_func.h>
+#include <tvm/runtime/module.h>
+#include <tvm/runtime/registry.h>
+#include <tvm/runtime/packed_func.h>
+#include <tvm/runtime/device_api.h>
 #include <string>
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <fstream>
 #include <condition_variable>
 #include "onnxruntime_cxx_api.h"
+
+#define kDLGPU 2
 
 class IDetector {
 public:
@@ -15,9 +19,8 @@ public:
     virtual cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
     virtual void loadModel(const std::string& modelPath) = 0;
 protected:
-    virtual cv::Mat preprocess(cv::Mat& image, std::vector<float>& input_tensor) = 0;
-    virtual cv::Mat postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape,
-                                float confThreshold, float iouThreshold) = 0;
+    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB) = 0;
+    virtual void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold) = 0;
 };
 
 class DetectorFactory {
@@ -33,9 +36,11 @@ public:
     cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
 
 protected:
-    cv::Mat preprocess(cv::Mat& image, std::vector<float>& input_tensor) override;
+    cv::Mat preprocess(cv::Mat& image, std::vector<float>& input_tensor) ;
     cv::Mat postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape,
-                       float confThreshold, float iouThreshold) override;
+                       float confThreshold, float iouThreshold);
+    void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)override;
+    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)override;
 
 private:
     Ort::Env env;
@@ -47,26 +52,21 @@ private:
     std::vector<const char*> outputNames;
 };
 
-// class TVMDetector : public IDetector {
-// public:
-//     TVMDetector();
-//     void loadModel(const std::string& modelPath) override;
-//     cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
+class TVMDetector : public IDetector {
+public:
+    TVMDetector();
+    void loadModel(const std::string& modelPath) override;
+    cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
 
-// protected:
-//     cv::Mat preprocess(cv::Mat& image, std::vector<float>& input_tensor) override;
-//     cv::Mat postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape,
-//                        float confThreshold, float iouThreshold) override;
+protected:
+    cv::Mat preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
+    cv::Mat postprocess(cv::Mat& image, float* data, int num_detections,
+                       float confThreshold, float iouThreshold);
+    void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)override;
+    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)override;
 
-// private:
-//     tvm::runtime::Module mod;
-//     DLDevice dev;
-//     tvm::runtime::NDArray input_array = tvm::runtime::NDArray::Empty({1, 3, 640, 640}, DLDataType{kDLFloat, 32, 1}, dev);
-//     tvm::runtime::NDArray output = tvm::runtime::NDArray::Empty({1, 7, 8400}, DLDataType{kDLFloat, 32, 1}, dev);
-//     tvm::runtime::PackedFunc set_input = mod_.GetFunction("set_input");
-//     tvm::runtime::PackedFunc run = mod_.GetFunction("run");
-//     tvm::runtime::PackedFunc get_output = mod_.GetFunction("get_output");
-// };
+
+};
 
 class ONNXDetectorFactory : public DetectorFactory {
 public:
@@ -75,12 +75,12 @@ public:
     }
 };
 
-// class TVMDetectorFactory : public DetectorFactory {
-// public:
-//     std::unique_ptr<IDetector> createDetector() override {
-//         return std::make_unique<TVMDetector>();
-//     }
-// };
+class TVMDetectorFactory : public DetectorFactory {
+public:
+    std::unique_ptr<IDetector> createDetector() override {
+        return std::make_unique<TVMDetector>();
+    }
+};
 
 template <typename T>
 class SafeQueue {
