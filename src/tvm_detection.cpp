@@ -1,21 +1,25 @@
 
 #include "Detector.h"
-
-
-TVMDetector::TVMDetector() : dev{DLDeviceType::kDLCPU, 0} {}
+using namespace std;
+// DLDevice dev;
+tvm::runtime::Module mod;
+DLDevice dev{static_cast<DLDeviceType>(kDLCPU), 0};
+    
+TVMDetector::TVMDetector(){}
 
 void TVMDetector::loadModel(const std::string& modelPath) {
+   
+    int device_type = kDLCPU;
+    int device_id = 0;
+    mod = tvm::runtime::Module::LoadFromFile(modelPath + "/mod.so");
 
-    dev = {static_cast<DLDeviceType>(device_type), device_id};
-    mod = tvm::runtime::Module::LoadFromFile(lib_path + "/mod.so");
-
-    ifstream json_in(lib_path + "/mod.json");
+    ifstream json_in(modelPath + "/mod.json");
     string json_data((istreambuf_iterator<char>(json_in)), istreambuf_iterator<char>());
     json_in.close();
 
     tvm::runtime::Module mod_executor = (*tvm::runtime::Registry::Get("tvm.graph_executor.create"))(json_data, mod, device_type, device_id);
 
-    ifstream params_in(lib_path + "/mod.params", ios::binary);
+    ifstream params_in(modelPath + "/mod.params", ios::binary);
     string params_data((istreambuf_iterator<char>(params_in)), istreambuf_iterator<char>());
     params_in.close();
 
@@ -25,10 +29,51 @@ void TVMDetector::loadModel(const std::string& modelPath) {
     mod = mod_executor;
 }
 
+float TVMDetector:: Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)
+{
+    const float eps = 1e-6;
+    float areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
+    float areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
+    float x1 = std::max(boxA[0], boxB[0]);
+    float y1 = std::max(boxA[1], boxB[1]);
+    float x2 = std::min(boxA[2], boxB[2]);
+    float y2 = std::min(boxA[3], boxB[3]);
+    float w = std::max(0.f, x2 - x1);
+    float h = std::max(0.f, y2 - y1);
+    float inter = w * h;
+    return inter / (areaA + areaB - inter + eps);
+}
+
+void TVMDetector::Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
+{
+    std::sort(boxes.begin(), boxes.end(), [](const std::vector<float> &boxA, const std::vector<float> &boxB)
+              { return boxA[4] > boxB[4]; });
+    for (int i = 0; i < boxes.size(); ++i)
+    {
+        if (boxes[i][4] == 0.f)
+            continue;
+        for (int j = i + 1; j < boxes.size(); ++j)
+        {
+            if (boxes[i][5] != boxes[j][5])
+                continue;
+            if (Iou(boxes[i], boxes[j]) > iou_threshold)
+                boxes[j][4] = 0.f;
+        }
+    }
+    boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [](const std::vector<float> &box)
+                               { return box[4] == 0.f; }),
+                boxes.end());
+}
 cv::Mat TVMDetector::detect(cv::Mat& image, float confThreshold, float iouThreshold) 
 {
     cv::Mat resized_frame;
-   
+
+    tvm::runtime::NDArray input_array = tvm::runtime::NDArray::Empty({1, 3, 640, 640}, DLDataType{kDLFloat, 32, 1}, dev);
+    tvm::runtime::NDArray output = tvm::runtime::NDArray::Empty({1, 7, 8400}, DLDataType{kDLFloat, 32, 1}, dev);
+    tvm::runtime::PackedFunc set_input = mod.GetFunction("set_input");
+    tvm::runtime::PackedFunc run = mod.GetFunction("run");
+    tvm::runtime::PackedFunc get_output = mod.GetFunction("get_output");
+
     resized_frame = preprocess(image, input_array);
     
     set_input("images", input_array);
@@ -45,11 +90,11 @@ cv::Mat TVMDetector::detect(cv::Mat& image, float confThreshold, float iouThresh
     float* output_data = static_cast<float*>(output->data);
 
     output.CopyToBytes(data, output_size * sizeof(float));
-
-    return postprocess(image, data, output, confThreshold, iouThreshold);
+    int num_detections = output->shape[2];
+    return postprocess(resized_frame, data, num_detections, confThreshold, iouThreshold);
 }
 
-cv::Mat TVMDetector::preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array) 
+cv::Mat TVMDetector::preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_array) 
 {
     cv::Mat resized_frame;
     cv::resize(frame, resized_frame, cv::Size(640, 640));
@@ -63,13 +108,13 @@ cv::Mat TVMDetector::preprocess(cv::Mat& image, tvm::runtime::NDArray& input_arr
         input_tensor_values.insert(input_tensor_values.end(), (float*)ch.datastart, (float*)ch.dataend);
     }
     input_array.CopyFromBytes(input_tensor_values.data(), input_tensor_values.size() * sizeof(float));
-    return resizedImage;
+    return resized_frame;
 }
 
-cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_t> output,
+cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections,
                                  float confThreshold, float iouThreshold) {
+    
     vector<vector<float>> boxes;
-    int num_detections = output->shape[2];
     for (int i = 0; i < num_detections; ++i) 
     {
         float x1 = data[0 * num_detections + i];
@@ -107,7 +152,7 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_
         }
     }
     float iou_threshold = 0.3;
-    nms(boxes, iou_threshold);
+    Nms(boxes, iou_threshold);
     for (const auto& box : boxes)
     {
         int left = static_cast<int>(box[0]);
@@ -126,10 +171,11 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_
         {
             color = cv::Scalar(0, 0, 255);
         }
-        cv::rectangle(resized_frame, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 0, 0), 1);
+        cv::rectangle(image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 0, 0), 1);
         string label = "Score: " + to_string(score).substr(0, 4) + " Class : " + to_string(class_id);
-        cv::putText(resized_frame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 0);
+        cv::putText(image, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 0);
     }
-
-    return result;
+    cv::Mat output_frame;
+    image.convertTo(output_frame, CV_8U, 255.0);
+    return output_frame;
 }
