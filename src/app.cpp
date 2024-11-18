@@ -1,4 +1,4 @@
-#include "Detector.h"
+#include "detector.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -6,22 +6,28 @@
 
 App::App(std::unique_ptr<DetectorFactory> factory) : detectorFactory(std::move(factory)) {}
 
-void App::run(std::string& modelPath, std::string& videoPath) {
+void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
     auto detector = detectorFactory->createDetector();
-    detector->loadModel(modelPath);
+    detector->LoadModel(modelPath,choice);
     Data data(videoPath);
 
     SafeQueue<cv::Mat> frameQueue;
     SafeQueue<cv::Mat> processedQueue;
 
     std::atomic<bool> processingDone(false);
-
+    int fps = 24;
+    const int frameDelay = 1000 / fps;
     auto captureTask = [&]() {
         cv::Mat frame;
+        
+        auto nextFrameTime = std::chrono::steady_clock::now();
         while (true) {
             frame = data.GetData();
             if (frame.empty()) break;
             frameQueue.enqueue(frame.clone());
+            
+            nextFrameTime += std::chrono::milliseconds(frameDelay);
+            std::this_thread::sleep_until(nextFrameTime);
         }
         frameQueue.setFinished();
     };
@@ -29,7 +35,7 @@ void App::run(std::string& modelPath, std::string& videoPath) {
     auto processTask = [&]() {
         cv::Mat frame;
         while (frameQueue.dequeue(frame)) {
-            cv::Mat result = detector->detect(frame);
+            cv::Mat result = detector->Detect(frame);
             processedQueue.enqueue(result);
         }
         processedQueue.setFinished();

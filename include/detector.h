@@ -1,3 +1,6 @@
+#ifndef DETECTOR_H
+#define DETECTOR_H
+
 #include <opencv2/opencv.hpp>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/registry.h>
@@ -8,19 +11,29 @@
 #include <memory>
 #include <mutex>
 #include <fstream>
+#include <ctime>
+#include <chrono>
 #include <condition_variable>
 #include "onnxruntime_cxx_api.h"
+#include <unordered_map>
+
 
 #define kDLGPU 2
 
 class IDetector {
 public:
+    std::vector<int> people_count;
+    std::vector<int> chair_count;
+    int one;
     virtual ~IDetector() = default;
-    virtual cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
-    virtual void loadModel(const std::string& modelPath) = 0;
+    virtual cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
+    virtual void LoadModel(const std::string& modelPath, int) = 0;
 protected:
-    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB) = 0;
-    virtual void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold) = 0;
+
+    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB);
+    virtual void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold);
+    virtual void BoundariesLogic(std::vector<std::vector<float>> &boxes);
+    virtual int mode(const std::vector<int>& numbers);
 };
 
 class DetectorFactory {
@@ -32,16 +45,14 @@ public:
 class ONNXDetector : public IDetector {
 public:
     ONNXDetector();
-    void loadModel(const std::string& modelPath) override;
-    cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
+    void LoadModel(const std::string& modelPath, int) override;
+    cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
 
 protected:
-    cv::Mat preprocess(cv::Mat& image, std::vector<float>& input_tensor) ;
-    cv::Mat postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape,
+    cv::Mat Preprocess(cv::Mat& image, std::vector<float>& input_tensor) ;
+    cv::Mat Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape,
                        float confThreshold, float iouThreshold);
-    void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)override;
-    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)override;
-
+    
 private:
     Ort::Env env;
     Ort::SessionOptions sessionOptions;
@@ -55,16 +66,13 @@ private:
 class TVMDetector : public IDetector {
 public:
     TVMDetector();
-    void loadModel(const std::string& modelPath) override;
-    cv::Mat detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
+    void LoadModel(const std::string& modelPath,int ) override;
+    cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
 
 protected:
-    cv::Mat preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
-    cv::Mat postprocess(cv::Mat& image, float* data, int num_detections,
+    cv::Mat Preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
+    cv::Mat Postprocess(cv::Mat& image, float* data, int num_detections,
                        float confThreshold, float iouThreshold);
-    void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)override;
-    virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)override;
-
 
 };
 
@@ -85,31 +93,31 @@ public:
 template <typename T>
 class SafeQueue {
     public:
-        SafeQueue() : q(), m(), c() {}
+        SafeQueue() : data_queue(), queue_mutex(), cond_var() {}
         void enqueue(T t) {
-            std::lock_guard<std::mutex> lock(m);
-            q.push(t);
-            c.notify_one();
+            std::lock_guard<std::mutex> lock(queue_mutex);
+            data_queue.push(t);
+            cond_var.notify_one();
         }
         bool dequeue(T& t) {
-            std::unique_lock<std::mutex> lock(m);
-            while (q.empty()) {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            while (data_queue.empty()) {
                 if (finished) return false;
-                c.wait(lock);
+                cond_var.wait(lock);
             }
-            t = q.front();
-            q.pop();
+            t = data_queue.front();
+            data_queue.pop();
             return true;
         }
         void setFinished() {
-            std::lock_guard<std::mutex> lock(m);
+            std::lock_guard<std::mutex> lock(queue_mutex);
             finished = true;
-            c.notify_all();
+            cond_var.notify_all();
         }
     private:
-        std::queue<T> q;
-        mutable std::mutex m;
-        std::condition_variable c;
+        std::queue<T> data_queue;
+        mutable std::mutex queue_mutex;
+        std::condition_variable cond_var;
         bool finished = false;
 };
 
@@ -127,8 +135,10 @@ private:
 class App {
 public:
     App(std::unique_ptr<DetectorFactory> factory);
-    void run(std::string& modelPath, std::string& videoPath);
+    void Run(std::string& modelPath, std::string& videoPath,int );
 
 private:
     std::unique_ptr<DetectorFactory> detectorFactory;
 };
+
+#endif  // DETECTOR_H
