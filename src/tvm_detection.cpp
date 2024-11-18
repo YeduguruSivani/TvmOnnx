@@ -1,15 +1,28 @@
 
-#include "Detector.h"
+#include "detector.h"
 using namespace std;
-// DLDevice dev;
 tvm::runtime::Module mod;
-DLDevice dev{static_cast<DLDeviceType>(kDLCPU), 0};
-    
+DLDevice dev;
+
 TVMDetector::TVMDetector(){}
 
-void TVMDetector::loadModel(const std::string& modelPath) {
-   
-    int device_type = kDLCPU;
+void TVMDetector::LoadModel(const std::string& modelPath,int choice) {
+    int device_type ;
+    if(choice == 1)
+    {
+        dev = {static_cast<DLDeviceType>(kDLCPU), 0};
+        device_type = kDLCPU;
+            
+    }
+    else if(choice == 2)
+    {
+        dev = {static_cast<DLDeviceType>(kDLGPU), 0};
+        device_type = kDLGPU;
+    }
+    else 
+    {
+        throw std::invalid_argument("Invalid choice: must be 1 (CPU) or 2 (GPU)");
+    }
     int device_id = 0;
     mod = tvm::runtime::Module::LoadFromFile(modelPath + "/mod.so");
 
@@ -29,42 +42,7 @@ void TVMDetector::loadModel(const std::string& modelPath) {
     mod = mod_executor;
 }
 
-float TVMDetector:: Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)
-{
-    const float eps = 1e-6;
-    float areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
-    float areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
-    float x1 = std::max(boxA[0], boxB[0]);
-    float y1 = std::max(boxA[1], boxB[1]);
-    float x2 = std::min(boxA[2], boxB[2]);
-    float y2 = std::min(boxA[3], boxB[3]);
-    float w = std::max(0.f, x2 - x1);
-    float h = std::max(0.f, y2 - y1);
-    float inter = w * h;
-    return inter / (areaA + areaB - inter + eps);
-}
-
-void TVMDetector::Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
-{
-    std::sort(boxes.begin(), boxes.end(), [](const std::vector<float> &boxA, const std::vector<float> &boxB)
-              { return boxA[4] > boxB[4]; });
-    for (int i = 0; i < boxes.size(); ++i)
-    {
-        if (boxes[i][4] == 0.f)
-            continue;
-        for (int j = i + 1; j < boxes.size(); ++j)
-        {
-            if (boxes[i][5] != boxes[j][5])
-                continue;
-            if (Iou(boxes[i], boxes[j]) > iou_threshold)
-                boxes[j][4] = 0.f;
-        }
-    }
-    boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [](const std::vector<float> &box)
-                               { return box[4] == 0.f; }),
-                boxes.end());
-}
-cv::Mat TVMDetector::detect(cv::Mat& image, float confThreshold, float iouThreshold) 
+cv::Mat TVMDetector::Detect(cv::Mat& image, float confThreshold, float iouThreshold) 
 {
     cv::Mat resized_frame;
 
@@ -74,11 +52,14 @@ cv::Mat TVMDetector::detect(cv::Mat& image, float confThreshold, float iouThresh
     tvm::runtime::PackedFunc run = mod.GetFunction("run");
     tvm::runtime::PackedFunc get_output = mod.GetFunction("get_output");
 
-    resized_frame = preprocess(image, input_array);
-    
+    resized_frame = Preprocess(image, input_array);
+    auto start_time = std::chrono::high_resolution_clock::now();
     set_input("images", input_array);
     run();
     get_output(0, output);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time-start_time);
+    std::cout<<"time taken :"<< duration.count()<<std::endl; 
     int output_size = 1;
 
     for (int i = 0; i < output->ndim; ++i) 
@@ -91,10 +72,10 @@ cv::Mat TVMDetector::detect(cv::Mat& image, float confThreshold, float iouThresh
 
     output.CopyToBytes(data, output_size * sizeof(float));
     int num_detections = output->shape[2];
-    return postprocess(resized_frame, data, num_detections, confThreshold, iouThreshold);
+    return Postprocess(resized_frame, data, num_detections, confThreshold, iouThreshold);
 }
 
-cv::Mat TVMDetector::preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_array) 
+cv::Mat TVMDetector::Preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_array) 
 {
     cv::Mat resized_frame;
     cv::resize(frame, resized_frame, cv::Size(640, 640));
@@ -111,7 +92,7 @@ cv::Mat TVMDetector::preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_arr
     return resized_frame;
 }
 
-cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections,
+cv::Mat TVMDetector::Postprocess(cv::Mat& image, float* data, int num_detections,
                                  float confThreshold, float iouThreshold) {
     
     vector<vector<float>> boxes;
@@ -127,9 +108,6 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections
         float score_threshold = 0.1;
         if (score_1 > score_threshold || score_2 > score_threshold || score_3 > score_threshold)
         {
-            cout << "Detection " << i + 1 << ": "
-                        << "x1=" << (x1) << ", y1=" << (y1) << ", x2=" << (x2)
-                        << ", y2=" << (y2) << ", score_1 =" << (score_1) << ", score_2 =" << (score_2) << ", score_3 =" << (score_3) << endl;
             int class_id = 1;
             float max_score = score_1;
             if (score_2 > score_1)
@@ -153,7 +131,11 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections
     }
     float iou_threshold = 0.3;
     Nms(boxes, iou_threshold);
-    for (const auto& box : boxes)
+    BoundariesLogic(boxes);
+    std::cout << "Number of boxes :" << boxes.size() << std::endl;
+    int no_of_persons=0;
+    int num_of_chairs=0;
+    for (const auto &box : boxes)
     {
         int left = static_cast<int>(box[0]);
         int top = static_cast<int>(box[1]);
@@ -161,7 +143,6 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections
         int bottom = static_cast<int>(box[3]);
         float score = box[4];
         int class_id = box[5];
-
         auto color = cv::Scalar(255, 0, 0);
         if (class_id == 1)
         {
@@ -169,13 +150,38 @@ cv::Mat TVMDetector::postprocess(cv::Mat& image, float* data, int num_detections
         }
         if (class_id == 2)
         {
+            num_of_chairs++;
             color = cv::Scalar(0, 0, 255);
         }
-        cv::rectangle(image, cv::Point(left, top), cv::Point(right, bottom), cv::Scalar(255, 0, 0), 1);
-        string label = "Score: " + to_string(score).substr(0, 4) + " Class : " + to_string(class_id);
-        cv::putText(image, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 0, 0), 0);
+        if(class_id==1 || class_id==3){
+            no_of_persons++;
+        }
+        cv::rectangle(image, cv::Point(left, top), cv::Point(right, bottom), color, 1);
+        std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
+        cv::putText(image, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
     }
+    int no_of_people1=0;
+    int no_of_chairs1=0;
+    people_count.push_back(no_of_persons);
+    chair_count.push_back(num_of_chairs);
+    if(people_count.size()>=30){
+        int k=mode(people_count);
+        int l=mode(chair_count);
+        people_count.erase(people_count.begin());
+        chair_count.erase(chair_count.begin());
+        no_of_people1=k;
+        no_of_chairs1=l;
+    }
+    std::string text="no_of_persons "+std::to_string(no_of_people1);
+    std::string text1="no_of_chairs "+std::to_string(no_of_chairs1);
+    cv:: putText(image, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,cv::Scalar(0, 255, 255), 0,0);
+    cv:: putText(image, text1, cv::Point(30, 50), cv::FONT_HERSHEY_SIMPLEX, 0.7,cv::Scalar(255, 0, 255), 0,0);
+    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
+    std::cout<<"number of chairs : in the frame "<<num_of_chairs<<std::endl;
+    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
     cv::Mat output_frame;
     image.convertTo(output_frame, CV_8U, 255.0);
+    boxes.clear();
+
     return output_frame;
 }

@@ -1,18 +1,21 @@
-#include "Detector.h"
+#include "detector.h"
 
 ONNXDetector::ONNXDetector() : env(ORT_LOGGING_LEVEL_WARNING, "ONNXModel") {}
 
-void ONNXDetector::loadModel(const std::string& modelPath) {
+void ONNXDetector::LoadModel(const std::string& modelPath,int choice) {
+    
     env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "ONNX_DETECTION");
 
     sessionOptions = Ort::SessionOptions();
+    int gpu_device_id;
     Ort::SessionOptions session_options;
-
-    int gpu_device_id = 0;
-    OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id = gpu_device_id;
-    sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
-
+    if(choice == 2)
+    { 
+        gpu_device_id = 0;
+        OrtCUDAProviderOptions cuda_options;
+        cuda_options.device_id = gpu_device_id;
+        sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
+    }
     session = Ort::Session(env, modelPath.c_str(), sessionOptions);
 
     Ort::AllocatorWithDefaultOptions allocator;
@@ -27,9 +30,9 @@ void ONNXDetector::loadModel(const std::string& modelPath) {
     std::cout << "Model loaded successfully" << std::endl;
 }
 
-cv::Mat ONNXDetector::detect(cv::Mat& image, float confThreshold, float iouThreshold) {
+cv::Mat ONNXDetector::Detect(cv::Mat& image, float confThreshold, float iouThreshold) {
     std::vector<float> image_data;
-    cv::Mat preprocessedImage = preprocess(image, image_data);
+    cv::Mat preprocessedImage = Preprocess(image, image_data);
 
     std::array<int64_t, 4> input_shape = {1, 3, 640, 640};
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -48,12 +51,12 @@ cv::Mat ONNXDetector::detect(cv::Mat& image, float confThreshold, float iouThres
     float *data = output_tensors.front().GetTensorMutableData<float>();
     std::vector<int64_t> shape = output_tensors.front().GetTensorTypeAndShapeInfo().GetShape();
 
-    cv::Mat detection = postprocess(image, data, shape, confThreshold, iouThreshold);
+    cv::Mat detection = Postprocess(image, data, shape, confThreshold, iouThreshold);
 
     return detection;
 }
 
-cv::Mat ONNXDetector::preprocess(cv::Mat& image, std::vector<float>& input_tensor) {
+cv::Mat ONNXDetector::Preprocess(cv::Mat& image, std::vector<float>& input_tensor) {
     cv::Mat resizedImage;
     cv::resize(image, resizedImage, cv::Size(640, 640));
     resizedImage.convertTo(resizedImage, CV_32F, 1.0 / 255.0);
@@ -66,11 +69,9 @@ cv::Mat ONNXDetector::preprocess(cv::Mat& image, std::vector<float>& input_tenso
     return resizedImage;
 }
 
-cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold) {
+cv::Mat ONNXDetector::Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold) {
+    
     std::vector<std::vector<float>> boxes;
-    cv::Mat resizedImage;
-    cv::resize(image, resizedImage, cv::Size(640, 640));
-    resizedImage.convertTo(resizedImage, CV_32F, 1.0 / 255.0);
     for (int i = 0; i < shape[2]; ++i)
     {
         float cx = data[i + shape[2] * 0];
@@ -104,8 +105,10 @@ cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64
     }
     float iou_threshold = 0.3;
     Nms(boxes, iou_threshold);
+    BoundariesLogic(boxes);
     std::cout << "Number of boxes :" << boxes.size() << std::endl;
-
+    int no_of_persons=0;
+    int num_of_chairs=0;
     for (const auto &box : boxes)
     {
         int left = static_cast<int>(box[0]);
@@ -114,7 +117,6 @@ cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64
         int bottom = static_cast<int>(box[3]);
         float score = box[4];
         int class_id = box[5];
-
         auto color = cv::Scalar(255, 0, 0);
         if (class_id == 1)
         {
@@ -122,49 +124,40 @@ cv::Mat ONNXDetector::postprocess(cv::Mat& image, float* data, std::vector<int64
         }
         if (class_id == 2)
         {
+            num_of_chairs++;
             color = cv::Scalar(0, 0, 255);
         }
-        cv::rectangle(resizedImage, cv::Point(left, top), cv::Point(right, bottom), color, 1);
+        if(class_id==1 || class_id==3){
+            no_of_persons++;
+        }
+        cv::rectangle(image, cv::Point(left, top), cv::Point(right, bottom), color, 1);
         std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
-        cv::putText(resizedImage, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
+        cv::putText(image, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
     }
+    int no_of_people1=0;
+    int no_of_chairs1=0;
+    people_count.push_back(no_of_persons);
+    chair_count.push_back(num_of_chairs);
+    if(people_count.size()>=30){
+        int k=mode(people_count);
+        int l=mode(chair_count);
+        people_count.erase(people_count.begin());
+        chair_count.erase(chair_count.begin());
+        no_of_people1=k;
+        no_of_chairs1=l;
+    }
+    std::string text="no_of_persons "+std::to_string(no_of_people1);
+    std::string text1="no_of_chairs "+std::to_string(no_of_chairs1);
+    cv:: putText(image, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,cv::Scalar(0, 255, 255), 0,0);
+    cv:: putText(image, text1, cv::Point(30, 50), cv::FONT_HERSHEY_SIMPLEX, 0.7,cv::Scalar(255, 0, 255), 0,0);
+    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
+    std::cout<<"number of chairs : in the frame "<<num_of_chairs<<std::endl;
+    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
+    std::cout<<"number of chairs : in the frame "<<num_of_chairs<<std::endl;
+    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
     cv::Mat output_frame;
-    resizedImage.convertTo(output_frame, CV_8U, 255.0);
+    image.convertTo(output_frame, CV_8U, 255.0);
+    boxes.clear();
     return output_frame;
 }
 
-float ONNXDetector::Iou(const std::vector<float> &boxA, const std::vector<float> &boxB)
-{
-    const float eps = 1e-6;
-    float areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]);
-    float areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]);
-    float x1 = std::max(boxA[0], boxB[0]);
-    float y1 = std::max(boxA[1], boxB[1]);
-    float x2 = std::min(boxA[2], boxB[2]);
-    float y2 = std::min(boxA[3], boxB[3]);
-    float w = std::max(0.f, x2 - x1);
-    float h = std::max(0.f, y2 - y1);
-    float inter = w * h;
-    return inter / (areaA + areaB - inter + eps);
-}
-
-void ONNXDetector::Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold)
-{
-    std::sort(boxes.begin(), boxes.end(), [](const std::vector<float> &boxA, const std::vector<float> &boxB)
-              { return boxA[4] > boxB[4]; });
-    for (int i = 0; i < boxes.size(); ++i)
-    {
-        if (boxes[i][4] == 0.f)
-            continue;
-        for (int j = i + 1; j < boxes.size(); ++j)
-        {
-            if (boxes[i][5] != boxes[j][5])
-                continue;
-            if (Iou(boxes[i], boxes[j]) > iou_threshold)
-                boxes[j][4] = 0.f;
-        }
-    }
-    boxes.erase(std::remove_if(boxes.begin(), boxes.end(), [](const std::vector<float> &box)
-                               { return box[4] == 0.f; }),
-                boxes.end());
-}
