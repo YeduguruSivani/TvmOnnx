@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall -g
+CXXFLAGS = -std=c++17 -Wall -g
 INCLUDES = -Iinclude \
           -I/usr/include/opencv4\
 		  -I./lib/tvm/3rdparty/dlpack/include \
