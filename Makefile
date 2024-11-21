@@ -1,13 +1,13 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall -g
+CXXFLAGS = -std=c++17 -O2 -w -g
 INCLUDES = -Iinclude \
           -I/usr/include/opencv4\
-		  -I./lib/tvm/3rdparty/dlpack/include \
-		  -I./lib/tvm/3rdparty/dmlc-core/include \
-		  -I./lib/tvm/src/runtime \
-		  -I./lib/tvm/3rdparty/compiler-rt \
-		  -I./lib/tvm/include \
-          -I./lib/onnxruntime/include
+		  -I/home/nvidianx/tvm/3rdparty/dlpack/include \
+		  -I/home/nvidianx/tvm/3rdparty/dmlc-core/include \
+		  -I/home/nvidianx/tvm/src/runtime \
+		  -I/home/nvidianx/tvm/3rdparty/compiler-rt \
+		  -I/home/nvidianx/tvm/include \
+          	  -I/home/nvidianx/onnxruntime/include/onnxruntime/core/session
 
 OPENCV_LIBS = -lopencv_videoio \
               -lopencv_video \
@@ -15,27 +15,29 @@ OPENCV_LIBS = -lopencv_videoio \
               -lopencv_imgproc \
               -lopencv_imgcodecs \
               -lopencv_highgui \
-			  -lpthread \
-			  -ltvm_runtime \
-			  -lonnxruntime 
+	      -lpthread \
+	      -ltvm_runtime \
+	      -lonnxruntime 
 
-LIBS = -L /home/ubuntu6/opencv_20 -L./lib/tvm/build -Wl,-rpath=./lib/tvm/build -L./lib/onnxruntime/lib -Wl,-rpath=./lib/onnxruntime/lib 
+LIBS = -L /usr/include/opencv4 -L/home/nvidianx/tvm/build -Wl,-rpath=/home/nvidianx/tvm/build -L/home/nvidianx/onnxruntime/build/Linux/Release -Wl,-rpath=/home/nvidianx/onnxruntime/build/Linux/Release 
 
 TARGET = build
 SRC = src
 OBJ = obj
-DATA = data
+DATA = data 
 
 all: directories $(TARGET)/people_count
 
 directories:
-	mkdir -p $(OBJ) $(TARGET) $(DATA) lib
+	@mkdir -p $(OBJ) $(TARGET) $(DATA) lib
 
-$(TARGET)/people_count: $(OBJ)/App.o $(OBJ)/main.o $(OBJ)/tvm_detection.o $(OBJ)/onnx_detection.o 
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(OPENCV_LIBS) $(LIBS)
+$(TARGET)/people_count: $(OBJ)/app.o $(OBJ)/main.o $(OBJ)/i_detector.o $(OBJ)/tvm_detection.o $(OBJ)/onnx_detection.o 
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(OPENCV_LIBS) $(LIBS)
 
 $(OBJ)/%.o: $(SRC)/%.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ $(LIBS)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ $(LIBS)
 
 clean:
-	rm -f $(OBJ)/* $(TARGET)/*
+	@rm -f $(OBJ)/* $(TARGET)/*
+
+refresh: clean all
