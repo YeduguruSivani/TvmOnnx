@@ -1,6 +1,5 @@
 #include "detector.h"
 #include <iostream>
-#include <thread>
 #include <chrono>
 #include <atomic>
 
@@ -23,32 +22,69 @@ void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
         while (true) {
             frame = data.GetData();
             if (frame.empty()) break;
-            frameQueue.enqueue(frame.clone());
-            
+            if (frame_count % frame_interval == 0) {
+                frameQueue.enqueue(frame.clone());
+                frame_count=0;
+            }
+            while (wait_until) cv::waitKey(100);
+            frame_count++;
+            processedQueue.enqueue(frame.clone());
             nextFrameTime += std::chrono::milliseconds(frameDelay);
             std::this_thread::sleep_until(nextFrameTime);
         }
         frameQueue.setFinished();
+        processedQueue.setFinished();
     };
 
     auto processTask = [&]() {
         cv::Mat frame;
-        static bool flag = true;
         while (frameQueue.dequeue(frame)) {
-            cv::Mat result = detector->Detect(frame, std::stof(std::getenv("CONF_THRESHOLD")), std::stof(std::getenv("IOU_THRESHOLD")));
-             if (flag) {
-                frameQueue.clear();
-                flag = false;
+            boxes = detector->Detect(frame, std::stof(std::getenv("CONF_THRESHOLD")), std::stof(std::getenv("IOU_THRESHOLD")));
+            if (wait_until) {
+                wait_until = false;
             }
-            processedQueue.enqueue(result);
         }
-        processedQueue.setFinished();
     };
 
     auto writeTask = [&]() {
         cv::Mat processedFrame;
+        cv::Mat image;
         while (processedQueue.dequeue(processedFrame)) {
-            data.WriteData(processedFrame);
+            cv::resize(processedFrame, processedFrame, cv::Size(640, 640));
+            image = processedFrame.clone();
+            int no_of_persons=0;
+            int no_of_chairs=0;
+            int no_of_empty_chairs=detector->DetectionLogic(boxes);
+            for (const auto &box : boxes)
+            {
+                int left = static_cast<int>(box[0]);
+                int top = static_cast<int>(box[1]);
+                int right = static_cast<int>(box[2]);
+                int bottom = static_cast<int>(box[3]);
+                float score = box[4];
+                int class_id = box[5];
+                auto color = cv::Scalar(255, 0, 0);
+                if (class_id == 1)
+                {
+                    color = cv::Scalar(0, 255, 0);
+                }
+                if (class_id == 2)
+                {
+                    no_of_chairs++;
+                    color = cv::Scalar(0, 0, 255);
+                }
+                if(class_id==1 || class_id==3){
+                    no_of_persons++;
+                }
+                cv::rectangle(processedFrame, cv::Point(left, top), cv::Point(right, bottom), color, 1);
+                std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
+                cv::putText(processedFrame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
+            }
+            std::string text="no_of_persons "+std::to_string(no_of_persons)+"\nno_of_chairs "+std::to_string(no_of_chairs)+"\nno_of_empty_chairs "+std::to_string(no_of_empty_chairs);
+            cv:: putText(image, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(0, 255, 255), 0,0);
+            cv::Mat output_frame;
+            cv::hconcat(image,processedFrame,output_frame);
+            data.WriteData(output_frame);
         }
     };
 
