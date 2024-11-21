@@ -31,8 +31,8 @@ all: directories $(TARGET)/people_count
 directories:
 	@mkdir -p $(OBJ) $(TARGET) $(DATA) lib
 
-$(TARGET)/people_count: $(OBJ)/app.o $(OBJ)/main.o $(OBJ)/i_detector.o $(OBJ)/tvm_detection.o $(OBJ)/onnx_detection.o 
-	@$(CXX) $(CXXFLAGS) $^ -o $@ $(OPENCV_LIBS) $(LIBS)
+$(TARGET)/people_count: $(OBJ)/app.o $(OBJ)/main.o $(OBJ)/i_detector.o $(OBJ)/tvm_detection.o $(OBJ)/onnx_detection.o include/*
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) $^ -o $@ $(OPENCV_LIBS) $(LIBS)
 
 $(OBJ)/%.o: $(SRC)/%.cpp
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@ $(LIBS)

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <ctime>
 #include <chrono>
+#include <thread>
 #include <condition_variable>
 #include "onnxruntime_cxx_api.h"
 #include <unordered_map>
@@ -22,14 +23,13 @@ class IDetector {
 public:
     int one;
     virtual ~IDetector() = default;
-    virtual cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
+    virtual std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
     virtual void LoadModel(const std::string& modelPath, int) = 0;
+    virtual int DetectionLogic(std::vector<std::vector<float>> &boxes);
 protected:
-
     virtual float Iou(const std::vector<float> &boxA, const std::vector<float> &boxB);
     virtual void Nms(std::vector<std::vector<float>> &boxes, const float iou_threshold);
     virtual void BoundariesLogic(std::vector<std::vector<float>> &boxes);
-    virtual int DetectionLogic(std::vector<std::vector<float>> &boxes);
 };
 
 class DetectorFactory {
@@ -42,11 +42,11 @@ class ONNXDetector : public IDetector {
 public:
     ONNXDetector();
     void LoadModel(const std::string& modelPath, int) override;
-    cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
+    std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
 
 protected:
     cv::Mat Preprocess(cv::Mat& image, std::vector<float>& input_tensor) ;
-    cv::Mat Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold);
+    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold);
     
 private:
     Ort::Env env;
@@ -57,22 +57,17 @@ private:
     std::vector<Ort::AllocatedStringPtr> outputNodeNameAllocatedStrings;
     std::vector<const char*> outputNames;
     std::vector<Ort::Value> output_tensors;
-    int frame_interval = std::stoi(std::getenv("ONNX_INFERENCE_INTERVAL"));
-    int frame_count = 0;
 };
 
 class TVMDetector : public IDetector {
 public:
     TVMDetector();
     void LoadModel(const std::string& modelPath,int ) override;
-    cv::Mat Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.4f) override;
+    std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.4f) override;
 
 protected:
     cv::Mat Preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
-    cv::Mat Postprocess(cv::Mat& image, float* data, int num_detections, float confThreshold, float iouThreshold);
-private:
-    int frame_interval = std::stoi(std::getenv("TVM_INFERENCE_INTERVAL"));
-    int frame_count = 0;
+    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, int num_detections, float confThreshold, float iouThreshold);
 };
 
 class ONNXDetectorFactory : public DetectorFactory {
@@ -117,7 +112,7 @@ class SafeQueue {
 	{
 	    while(!data_queue.empty())
 	    {
-		data_queue.pop();
+            data_queue.pop();
 	    }
 	}
     private:
@@ -145,6 +140,9 @@ public:
 
 private:
     std::unique_ptr<DetectorFactory> detectorFactory;
+    int frame_count = 0;
+    std::vector<std::vector<float>> boxes;
+    bool wait_until = true;
 };
 
 #endif //DETECTOR_H

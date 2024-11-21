@@ -6,9 +6,10 @@ DLDevice dev;
 
 TVMDetector::TVMDetector(){}
 
-void TVMDetector::LoadModel(const std::string& modelPath,int choice) {
-    int device_type ;
-    if(choice == 1)
+void TVMDetector::LoadModel(const std::string& modelPath,int choice) 
+{
+    int device_type;
+    if(choice == 1) 
     {
         dev = {static_cast<DLDeviceType>(kDLCPU), 0};
         device_type = kDLCPU;
@@ -42,7 +43,7 @@ void TVMDetector::LoadModel(const std::string& modelPath,int choice) {
     mod = mod_executor;
 }
 
-cv::Mat TVMDetector::Detect(cv::Mat& image, float conf_threshold, float iou_threshold) 
+std::vector<std::vector<float>> TVMDetector::Detect(cv::Mat& image, float conf_threshold, float iou_threshold) 
 {
     cv::Mat resized_frame;
 
@@ -54,16 +55,11 @@ cv::Mat TVMDetector::Detect(cv::Mat& image, float conf_threshold, float iou_thre
 
     resized_frame = Preprocess(image, input_array);
     set_input("images", input_array);
-    if(frame_count % frame_interval ==0)
-    {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        run();
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time);
-        std::cout<<"time taken :"<< duration.count()<<std::endl;
-        frame_count=0;
-    }
-    frame_count++;
+    auto start_time = std::chrono::high_resolution_clock::now();
+    run();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time);
+    std::cout<<"time taken :"<< duration.count()<<std::endl;
     get_output(0, output); 
     int output_size = 1;
 
@@ -97,7 +93,7 @@ cv::Mat TVMDetector::Preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_arr
     return resized_frame;
 }
 
-cv::Mat TVMDetector::Postprocess(cv::Mat& image, float* data, int num_detections,float conf_threshold, float iou_threshold) 
+std::vector<std::vector<float>> TVMDetector::Postprocess(cv::Mat& image, float* data, int num_detections,float conf_threshold, float iou_threshold) 
 {
 
     cv::Mat resized_image = image.clone();
@@ -136,49 +132,5 @@ cv::Mat TVMDetector::Postprocess(cv::Mat& image, float* data, int num_detections
     Nms(boxes, iou_threshold);
     BoundariesLogic(boxes);
 
-    int no_of_persons=0;
-    int no_of_chairs=0;
-    int no_of_empty_chairs=0;
-    no_of_empty_chairs = DetectionLogic(boxes);
-    for (const auto &box : boxes)
-    {
-        int left = static_cast<int>(box[0]);
-        int top = static_cast<int>(box[1]);
-        int right = static_cast<int>(box[2]);
-        int bottom = static_cast<int>(box[3]);
-        float score = box[4];
-        int class_id = box[5];
-        auto color = cv::Scalar(255, 0, 0);
-        if (class_id == 1)
-        {
-            color = cv::Scalar(0, 255, 0);
-        }
-        if (class_id == 2)
-        {
-            no_of_chairs++;
-	   
-            color = cv::Scalar(0, 0, 255);
-        }
-        if(class_id==1 || class_id==3){
-            no_of_persons++;
-        }
-        cv::rectangle(image, cv::Point(left, top), cv::Point(right, bottom), color, 1);
-        std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
-        cv::putText(image, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
-    }
-    std::string text="no_of_persons "+std::to_string(no_of_persons);
-    std::string text1="no_of_chairs "+std::to_string(no_of_chairs);
-    std::string text2="no_of_empty_chairs "+std::to_string(no_of_empty_chairs);
-    cv:: putText(resized_image, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(0, 255, 255), 0,0);
-    cv:: putText(resized_image, text1, cv::Point(10, 80), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255, 0, 255), 0,0);
-    cv:: putText(resized_image, text2, cv::Point(250, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255, 0, 255), 0,0);
-    std::cout<<"number of persons : in the frame "<<no_of_persons<<std::endl;
-    std::cout<<"number of chairs : in the frame "<<no_of_chairs<<std::endl;
-    std::cout<<"number of empty chairs  : in the frame "<<no_of_empty_chairs<<std::endl;
-    cv::Mat output_frame;
-    cv::hconcat(resized_image,image,output_frame);
-    output_frame.convertTo(output_frame,CV_8U,255.0);
-    boxes.clear();
-
-    return output_frame;
+    return boxes;
 }

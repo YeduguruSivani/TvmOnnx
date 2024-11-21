@@ -86,7 +86,7 @@ int IDetector::DetectionLogic(std::vector<std::vector<float>> &boxes)
 			bool is_empty = true;
 			for(const auto &person : people)
 			{
-				if(Iou(chair,person)>0.05)
+				if(Iou(chair,person)>0.1)
 				{
 					is_empty = false;
 					break;
