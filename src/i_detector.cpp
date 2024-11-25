@@ -68,7 +68,7 @@ void IDetector::BoundariesLogic(std::vector<std::vector<float>> &boxes)
 
 int IDetector::DetectionLogic(std::vector<std::vector<float>> &boxes)
 {
-	int empty_chairs=0;
+	int empty_chair=0;
 	std::vector<std::vector<float>>chairs;
 	std::vector<std::vector<float>>people;
 	for(const auto &box:boxes)
@@ -81,20 +81,20 @@ int IDetector::DetectionLogic(std::vector<std::vector<float>> &boxes)
 		{
 			people.push_back(box);
 		}
-		for(const auto &chair :chairs)
-		{
-			bool is_empty = true;
-			for(const auto &person : people)
-			{
-				if(Iou(chair,person)>0.1)
-				{
-					is_empty = false;
-					break;
-				}
-			}
-			if(is_empty)
-				empty_chairs++;
-		}
-		return empty_chairs;
 	}
+	for(const auto &chair :chairs)
+	{
+		bool is_empty = true;
+		for(const auto &person : people)
+		{
+			if(Iou(chair,person)>0.1)
+			{
+				is_empty = false;
+				break;
+			}
+		}
+		if(is_empty)
+			empty_chair++;
+	}
+	return empty_chair;
 }

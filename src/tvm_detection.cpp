@@ -131,6 +131,5 @@ std::vector<std::vector<float>> TVMDetector::Postprocess(cv::Mat& image, float* 
     }
     Nms(boxes, iou_threshold);
     BoundariesLogic(boxes);
-
     return boxes;
 }

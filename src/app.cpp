@@ -41,6 +41,7 @@ void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
         cv::Mat frame;
         while (frameQueue.dequeue(frame)) {
             boxes = detector->Detect(frame, std::stof(std::getenv("CONF_THRESHOLD")), std::stof(std::getenv("IOU_THRESHOLD")));
+            frameQueue.clear();
             if (wait_until) {
                 wait_until = false;
             }
@@ -81,8 +82,14 @@ void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
                 std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
                 cv::putText(processedFrame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
             }
-            std::string text="no_of_persons "+std::to_string(no_of_persons)+"\nno_of_chairs "+std::to_string(no_of_chairs)+"\nno_of_empty_chairs "+std::to_string(no_of_empty_chairs);
-            cv:: putText(image, text, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(0, 255, 255), 0,0);
+            std::string text="No of persons "+std::to_string(no_of_persons);
+            std::string text1="No of chairs "+std::to_string(no_of_chairs);
+            std::string text2="Empty chairs "+std::to_string(no_of_empty_chairs);
+            cv::rectangle(image, cv::Point(370, 5), cv::Point(700, 110), (0,0,0), -1);
+            cv:: putText(image, text, cv::Point(400, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            cv:: putText(image, text1, cv::Point(400, 60), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            cv:: putText(image, text2, cv::Point(400, 90), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+
             cv::Mat output_frame;
             cv::hconcat(image,processedFrame,output_frame);
             data.WriteData(output_frame);
