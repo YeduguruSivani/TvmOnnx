@@ -6,7 +6,7 @@ DLDevice dev;
 
 TVMDetector::TVMDetector(){}
 
-void TVMDetector::LoadModel(const std::string& modelPath,int choice) 
+void TVMDetector::LoadModel(const std::string& model_path,int choice) 
 {
     int device_type;
     if(choice == 1) 
@@ -25,15 +25,15 @@ void TVMDetector::LoadModel(const std::string& modelPath,int choice)
         throw std::invalid_argument("Invalid choice: must be 1 (CPU) or 2 (GPU)");
     }
     int device_id = 0;
-    mod = tvm::runtime::Module::LoadFromFile(modelPath + "/mod.so");
+    mod = tvm::runtime::Module::LoadFromFile(model_path + "/mod.so");
 
-    ifstream json_in(modelPath + "/mod.json");
+    ifstream json_in(model_path + "/mod.json");
     string json_data((istreambuf_iterator<char>(json_in)), istreambuf_iterator<char>());
     json_in.close();
 
     tvm::runtime::Module mod_executor = (*tvm::runtime::Registry::Get("tvm.graph_executor.create"))(json_data, mod, device_type, device_id);
 
-    ifstream params_in(modelPath + "/mod.params", ios::binary);
+    ifstream params_in(model_path + "/mod.params", ios::binary);
     string params_data((istreambuf_iterator<char>(params_in)), istreambuf_iterator<char>());
     params_in.close();
 

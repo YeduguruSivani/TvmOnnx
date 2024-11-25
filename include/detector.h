@@ -22,7 +22,7 @@ class IDetector {
 public:
     int one;
     virtual ~IDetector() = default;
-    virtual std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) = 0;
+    virtual std::vector<std::vector<float>> Detect(cv::Mat& image, float conf_threshold = 0.4f, float iou_threshold = 0.45f) = 0;
     virtual void LoadModel(const std::string& modelPath, int) = 0;
     virtual int DetectionLogic(std::vector<std::vector<float>> &boxes);
 protected:
@@ -41,20 +41,20 @@ class ONNXDetector : public IDetector {
 public:
     ONNXDetector();
     void LoadModel(const std::string& modelPath, int) override;
-    std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.45f) override;
+    std::vector<std::vector<float>> Detect(cv::Mat& image, float conf_threshold = 0.4f, float iou_threshold = 0.45f) override;
 
 protected:
     cv::Mat Preprocess(cv::Mat& image, std::vector<float>& input_tensor) ;
-    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float confThreshold, float iouThreshold);
+    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float conf_threshold, float iou_threshold);
     
 private:
     Ort::Env env;
-    Ort::SessionOptions sessionOptions;
+    Ort::SessionOptions session_options;
     Ort::Session session{nullptr};
-    std::vector<Ort::AllocatedStringPtr> inputNodeNameAllocatedStrings;
-    std::vector<const char*> inputNames;
-    std::vector<Ort::AllocatedStringPtr> outputNodeNameAllocatedStrings;
-    std::vector<const char*> outputNames;
+    std::vector<Ort::AllocatedStringPtr> input_node_name_allocated_strings;
+    std::vector<const char*> input_names;
+    std::vector<Ort::AllocatedStringPtr> output_node_name_allocated_strings;
+    std::vector<const char*> output_names;
     std::vector<Ort::Value> output_tensors;
 };
 
@@ -62,11 +62,11 @@ class TVMDetector : public IDetector {
 public:
     TVMDetector();
     void LoadModel(const std::string& modelPath,int ) override;
-    std::vector<std::vector<float>> Detect(cv::Mat& image, float confThreshold = 0.4f, float iouThreshold = 0.4f) override;
+    std::vector<std::vector<float>> Detect(cv::Mat& image, float conf_threshold = 0.4f, float iou_threshold = 0.4f) override;
 
 protected:
     cv::Mat Preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
-    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, int num_detections, float confThreshold, float iouThreshold);
+    std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, int num_detections, float conf_threshold, float iou_threshold);
 };
 
 class ONNXDetectorFactory : public DetectorFactory {
@@ -107,13 +107,13 @@ class SafeQueue {
             finished = true;
             cond_var.notify_all();
         }
-	void clear()
-	{
-	    while(!data_queue.empty())
-	    {
-            data_queue.pop();
-	    }
-	}
+        void clear()
+        {
+            while(!data_queue.empty())
+            {
+                data_queue.pop();
+            }
+        }
     private:
         std::queue<T> data_queue;
         mutable std::mutex queue_mutex;
@@ -138,7 +138,7 @@ public:
     void Run(std::string& modelPath, std::string& videoPath,int );
 
 private:
-    std::unique_ptr<DetectorFactory> detectorFactory;
+    std::unique_ptr<DetectorFactory> detector_factory;
     int frame_count = 0;
     std::vector<std::vector<float>> boxes;
     bool wait_until = true;

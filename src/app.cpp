@@ -3,60 +3,59 @@
 #include <chrono>
 #include <atomic>
 
-App::App(std::unique_ptr<DetectorFactory> factory) : detectorFactory(std::move(factory)) {}
+App::App(std::unique_ptr<DetectorFactory> factory) : detector_factory(std::move(factory)) {}
 
-void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
-    auto detector = detectorFactory->createDetector();
-    detector->LoadModel(modelPath,choice);
-    Data data(videoPath);
+void App::Run(std::string& model_path, std::string& video_path,int choice) {
+    auto detector = detector_factory->createDetector();
+    detector->LoadModel(model_path,choice);
+    Data data(video_path);
 
-    SafeQueue<cv::Mat> frameQueue;
-    SafeQueue<cv::Mat> processedQueue;
+    SafeQueue<cv::Mat> frame_queue;
+    SafeQueue<cv::Mat> processed_queue;
 
-    std::atomic<bool> processingDone(false);
     int fps = std::stoi(std::getenv("FPS"));
-    const int frameDelay = 1000 / fps;
-    auto captureTask = [&]() {
+    const int frame_delay = 1000 / fps;
+    auto CaptureTask = [&]() {
         cv::Mat frame;
-        auto nextFrameTime = std::chrono::steady_clock::now();
+        auto next_frame_time = std::chrono::steady_clock::now();
         int frame_interval = std::stoi(std::getenv("INFERENCE_INTERVAL"));
         while (true) {
             frame = data.GetData();
             if (frame.empty()) break;
             if (frame_count % frame_interval == 0) {
-                frameQueue.enqueue(frame.clone());
+                frame_queue.enqueue(frame.clone());
                 frame_count=0;
             }
             while (wait_until) cv::waitKey(100);
             frame_count++;
-            processedQueue.enqueue(frame.clone());
-            nextFrameTime += std::chrono::milliseconds(frameDelay);
-            std::this_thread::sleep_until(nextFrameTime);
+            processed_queue.enqueue(frame.clone());
+            next_frame_time += std::chrono::milliseconds(frame_delay);
+            std::this_thread::sleep_until(next_frame_time);
         }
-        frameQueue.setFinished();
-        processedQueue.setFinished();
+        frame_queue.setFinished();
+        processed_queue.setFinished();
     };
 
-    auto processTask = [&]() {
+    auto ProcessTask = [&]() {
         cv::Mat frame;
-        while (frameQueue.dequeue(frame)) {
+        while (frame_queue.dequeue(frame)) {
             boxes = detector->Detect(frame, std::stof(std::getenv("CONF_THRESHOLD")), std::stof(std::getenv("IOU_THRESHOLD")));
-            frameQueue.clear();
+            frame_queue.clear();
             if (wait_until) {
                 wait_until = false;
             }
         }
     };
 
-    auto writeTask = [&]() {
-        cv::Mat processedFrame;
+    auto WriteTask = [&]() {
+        cv::Mat processed_frame;
         cv::Mat image;
-        while (processedQueue.dequeue(processedFrame)) {
-            cv::resize(processedFrame, processedFrame, cv::Size(640, 640));
-            image = processedFrame.clone();
+        while (processed_queue.dequeue(processed_frame)) {
+            cv::resize(processed_frame, processed_frame, cv::Size(640, 640));
+            image = processed_frame.clone();
             int no_of_persons=0;
             int no_of_chairs=0;
-            int no_of_empty_chairs=detector->DetectionLogic(boxes);
+            int empty_chairs=detector->DetectionLogic(boxes);
             for (const auto &box : boxes)
             {
                 int left = static_cast<int>(box[0]);
@@ -78,60 +77,70 @@ void App::Run(std::string& modelPath, std::string& videoPath,int choice) {
                 if(class_id==1 || class_id==3){
                     no_of_persons++;
                 }
-                cv::rectangle(processedFrame, cv::Point(left, top), cv::Point(right, bottom), color, 1);
+                cv::rectangle(processed_frame, cv::Point(left, top), cv::Point(right, bottom), color, 1);
                 std::string label = "Score: " + std::to_string(score).substr(0, 4) + " Class : " + std::to_string(class_id);
-                cv::putText(processedFrame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
+                cv::putText(processed_frame, label, cv::Point(left, top - 10), cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 0, 0);
             }
-            std::string text="No of persons "+std::to_string(no_of_persons);
-            std::string text1="No of chairs "+std::to_string(no_of_chairs);
-            std::string text2="Empty chairs "+std::to_string(no_of_empty_chairs);
-            cv::rectangle(image, cv::Point(370, 5), cv::Point(700, 110), (0,0,0), -1);
-            cv:: putText(image, text, cv::Point(400, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
-            cv:: putText(image, text1, cv::Point(400, 60), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
-            cv:: putText(image, text2, cv::Point(400, 90), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            // std::string text="No of persons "+std::to_string(no_of_persons);
+            // std::string text1="No of chairs "+std::to_string(no_of_chairs);
+            // std::string text2="Empty chairs "+std::to_string(empty_chairs);
+            // cv::rectangle(image, cv::Point(370, 5), cv::Point(700, 110), (0,0,0), -1);
+            // cv:: putText(image, text, cv::Point(400, 30), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            // cv:: putText(image, text1, cv::Point(400, 60), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            // cv:: putText(image, text2, cv::Point(400, 90), cv::FONT_HERSHEY_SIMPLEX, 0.9,cv::Scalar(255,255,255), 0,0);
+            std::vector<std::string> texts = {
+                "No of persons " + std::to_string(no_of_persons),
+                "No of chairs " + std::to_string(no_of_chairs),
+                "Empty chairs " + std::to_string(empty_chairs)
+            };
 
+            cv::rectangle(image, cv::Point(370, 5), cv::Point(700, 110), (0,0,0), -1);
+
+            for(int i = 0; i < texts.size(); i++) {
+                cv::putText(image, texts[i], cv::Point(400, 30 + i * 30), cv::FONT_HERSHEY_SIMPLEX, 0.9, cv::Scalar(255,255,255), 0, 0);
+            }
             cv::Mat output_frame;
-            cv::hconcat(image,processedFrame,output_frame);
+            cv::hconcat(image,processed_frame,output_frame);
             data.WriteData(output_frame);
         }
     };
 
-    std::thread captureThread(captureTask);
-    std::thread processingThread(processTask);
-    std::thread writingThread(writeTask);
+    std::thread CaptureThread(CaptureTask);
+    std::thread ProcessingThread(ProcessTask);
+    std::thread WritingThread(WriteTask);
 
-    captureThread.join();
-    processingThread.join();
-    writingThread.join();
+    CaptureThread.join();
+    ProcessingThread.join();
+    WritingThread.join();
 
     std::cout << "Video processing completed successfully." << std::endl;
 }
 
-Data::Data(std::string& videoPath) {
-    std::string outputPath = videoPath.substr(0, videoPath.length()-4) + "_Detection" + videoPath.substr(videoPath.length()-4, videoPath.length());
+Data::Data(std::string& video_path) {
+    std::string output_path = video_path.substr(0, video_path.length()-4) + "_Detection" + video_path.substr(video_path.length()-4, video_path.length());
     
-    if(videoPath == "live_stream") cap = cv::VideoCapture(0);
-    else cap = cv::VideoCapture(videoPath);
+    if(video_path == "live_stream") cap = cv::VideoCapture(0);
+    else cap = cv::VideoCapture(video_path);
     if (!cap.isOpened())
     {
         std::cerr << "Error: Could not open or find the video file!\n";
     }
-    int frameWidth = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
-    int frameHeight = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+    int frame_height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
     int fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
     int fourcc = static_cast<int>(cap.get(cv::CAP_PROP_FOURCC));
 
-    out = cv::VideoWriter(outputPath, fourcc, fps, cv::Size(frameWidth, frameHeight), true);
+    out = cv::VideoWriter(output_path, fourcc, fps, cv::Size(frame_width, frame_height), true);
     if (!out.isOpened())
     {
         std::cerr << "Error: Could not open the output video file for writing!\n";
     }
 }
 
-void Data::WriteData(cv::Mat processedFrame) {
+void Data::WriteData(cv::Mat processed_frame) {
     std::cout << "Displaying frame" << std::endl;
-    out.write(processedFrame);
-    cv::imshow("yolo11 inference", processedFrame);
+    out.write(processed_frame);
+    cv::imshow("yolo11 inference", processed_frame);
     if (cv::waitKey(10) == 'q') {
         cap.release();
         return;

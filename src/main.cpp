@@ -13,17 +13,17 @@ int main()
         std::cin>>choice;
         if(choice == 1)
         {
-            auto onnxFactory = std::make_unique<ONNXDetectorFactory>();
-            App onnxApp(std::move(onnxFactory));
+            auto onnx_factory = std::make_unique<ONNXDetectorFactory>();
+            App onnx_app(std::move(onnx_factory));
             std::string onnx_path = std::getenv("ONNX_MODEL_PATH");
-            onnxApp.Run(onnx_path, video_path, choice);
+            onnx_app.Run(onnx_path, video_path, choice);
         }
         else if(choice == 2)
         {
-            auto onnxFactory = std::make_unique<ONNXDetectorFactory>();
-            App onnxApp(std::move(onnxFactory));
+            auto onnx_factory = std::make_unique<ONNXDetectorFactory>();
+            App onnx_app(std::move(onnx_factory));
             std::string onnx_path = std::getenv("ONNX_MODEL_PATH");
-            onnxApp.Run(onnx_path, video_path, choice);
+            onnx_app.Run(onnx_path, video_path, choice);
         }
     }
     else if(choice==2)
@@ -32,17 +32,17 @@ int main()
         std::cin>>choice;
         if(choice == 1)
         {
-            auto tvmFactory = std::make_unique<TVMDetectorFactory>();
-            App tvmApp(std::move(tvmFactory));
+            auto tvm_factory = std::make_unique<TVMDetectorFactory>();
+            App tvm_app(std::move(tvm_factory));
             std::string tvm_path = std::getenv("TVM_CPU_MODEL_PATH");
-            tvmApp.Run(tvm_path, video_path, choice);
+            tvm_app.Run(tvm_path, video_path, choice);
         }
         else if(choice == 2)
         {
-            auto tvmFactory = std::make_unique<TVMDetectorFactory>();
-            App tvmApp(std::move(tvmFactory));
+            auto tvm_factory = std::make_unique<TVMDetectorFactory>();
+            App tvm_app(std::move(tvm_factory));
             std::string tvm_path = std::getenv("TVM_GPU_MODEL_PATH");
-            tvmApp.Run(tvm_path, video_path, choice);
+            tvm_app.Run(tvm_path, video_path, choice);
         }
     }
     

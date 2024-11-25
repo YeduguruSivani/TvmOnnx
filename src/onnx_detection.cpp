@@ -6,7 +6,7 @@ void ONNXDetector::LoadModel(const std::string& model_path,int choice)
 {
     env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "ONNX_DETECTION");
 
-    sessionOptions = Ort::SessionOptions();
+    session_options = Ort::SessionOptions();
     int gpu_device_id;
     Ort::SessionOptions session_options;
     if(choice == 2)
@@ -14,18 +14,18 @@ void ONNXDetector::LoadModel(const std::string& model_path,int choice)
         gpu_device_id = 0;
         OrtCUDAProviderOptions cuda_options;
         cuda_options.device_id = gpu_device_id;
-        sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
+        session_options.AppendExecutionProvider_CUDA(cuda_options);
     }
-    session = Ort::Session(env, model_path.c_str(), sessionOptions);
+    session = Ort::Session(env, model_path.c_str(), session_options);
 
     Ort::AllocatorWithDefaultOptions allocator;
     auto input_name = session.GetInputNameAllocated(0, allocator);
-    inputNodeNameAllocatedStrings.push_back(std::move(input_name));
-    inputNames.push_back(inputNodeNameAllocatedStrings.back().get());
+    input_node_name_allocated_strings.push_back(std::move(input_name));
+    input_names.push_back(input_node_name_allocated_strings.back().get());
 
     auto output_name = session.GetOutputNameAllocated(0, allocator);
-    outputNodeNameAllocatedStrings.push_back(std::move(output_name));
-    outputNames.push_back(outputNodeNameAllocatedStrings.back().get());
+    output_node_name_allocated_strings.push_back(std::move(output_name));
+    output_names.push_back(output_node_name_allocated_strings.back().get());
 
     std::cout << "Model loaded successfully" << std::endl;
 }
@@ -58,16 +58,16 @@ std::vector<std::vector<float>> ONNXDetector::Detect(cv::Mat& image, float conf_
 }
 
 cv::Mat ONNXDetector::Preprocess(cv::Mat& image, std::vector<float>& input_tensor) {
-    cv::Mat resizedImage;
-    cv::resize(image, resizedImage, cv::Size(640, 640));
-    resizedImage.convertTo(resizedImage, CV_32F, 1.0 / 255.0);
+    cv::Mat resized_image;
+    cv::resize(image, resized_image, cv::Size(640, 640));
+    resized_image.convertTo(resized_image, CV_32F, 1.0 / 255.0);
     std::vector<cv::Mat> channels(3);
-    cv::split(resizedImage, channels);
+    cv::split(resized_image, channels);
     for (auto &ch : channels)
     {
         input_tensor.insert(input_tensor.end(), (float *)ch.datastart, (float *)ch.dataend);
     }
-    return resizedImage;
+    return resized_image;
 }
 
 std::vector<std::vector<float>> ONNXDetector::Postprocess(cv::Mat& image, float* data, std::vector<int64_t> shape, float conf_threshold, float iou_threshold) 
