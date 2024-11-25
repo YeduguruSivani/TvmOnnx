@@ -18,7 +18,6 @@
 #include "onnxruntime_cxx_api.h"
 #include <unordered_map>
 
-
 class IDetector {
 public:
     int one;
