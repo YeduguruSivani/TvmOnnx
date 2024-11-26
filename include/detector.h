@@ -124,24 +124,26 @@ class SafeQueue {
 class Data {
 public:
     Data(std::string& videoPath);
-    cv::Mat GetData();
-    void WriteData(cv::Mat processedFrame);
+    std::vector<cv::Mat> GetData();
+    void WriteData(std::vector<cv::Mat> processed_frames);
 
 private:
-    cv::VideoCapture cap;
-    cv::VideoWriter out;
+    std::vector<cv::VideoCapture> caps;
+    int sources = 1;
 };
 
 class App {
 public:
     App(std::unique_ptr<DetectorFactory> factory);
-    void Run(std::string& modelPath, std::string& videoPath,int );
+    void Run(std::string& modelPath, std::string& videoPath,int);
 
 private:
     std::unique_ptr<DetectorFactory> detector_factory;
     int frame_count = 0;
-    std::vector<std::vector<float>> boxes;
+    std::vector<std::vector<std::vector<float>>> n_boxes;
     bool wait_until = true;
+    int sources = 1;
+    bool stop = false;
 };
 
 #endif //DETECTOR_H
