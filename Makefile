@@ -7,6 +7,7 @@ INCLUDES = -Iinclude \
 		  -I/home/nvidianx/tvm/src/runtime \
 		  -I/home/nvidianx/tvm/3rdparty/compiler-rt \
 		  -I/home/nvidianx/tvm/include \
+		  -I/usr/local/cuda-11.4/targets/aarch64-linux/include/ \
           	  -I/home/nvidianx/onnxruntime/include/onnxruntime/core/session
 
 OPENCV_LIBS = -lopencv_videoio \
@@ -17,9 +18,10 @@ OPENCV_LIBS = -lopencv_videoio \
               -lopencv_highgui \
 	      -lpthread \
 	      -ltvm_runtime \
-	      -lonnxruntime 
+	      -lonnxruntime \
+	      -lcudart
 
-LIBS = -L /usr/include/opencv4 -L/home/nvidianx/tvm/build -Wl,-rpath=/home/nvidianx/tvm/build -L/home/nvidianx/onnxruntime/build/Linux/Release -Wl,-rpath=/home/nvidianx/onnxruntime/build/Linux/Release 
+LIBS = -L /usr/include/opencv4 -L/usr/local/cuda-11.4/lib64 -L/home/nvidianx/tvm/build -Wl,-rpath=/home/nvidianx/tvm/build -L/home/nvidianx/onnxruntime/build/Linux/Release -Wl,-rpath=/home/nvidianx/onnxruntime/build/Linux/Release 
 
 TARGET = build
 SRC = src

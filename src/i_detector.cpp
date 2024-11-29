@@ -50,7 +50,7 @@ void IDetector::BoundariesLogic(std::vector<std::vector<float>> &boxes)
                     continue;
                 }
                 else {
-                    if (Iou(boxes[i], boxes[j]) > 0.05) {
+                    if (Iou(boxes[i], boxes[j]) > 0.1) {
                         if (boxes[i][5] == 1) {
                             boxes[j][4] = 0.f;
                         }
@@ -87,7 +87,7 @@ int IDetector::DetectionLogic(std::vector<std::vector<float>> &boxes)
 		bool is_empty = true;
 		for(const auto &person : people)
 		{
-			if(Iou(chair,person)>0.1)
+			if(Iou(chair,person)>0.05)
 			{
 				is_empty = false;
 				break;

@@ -1,5 +1,6 @@
-
 #include "detector.h"
+
+
 using namespace std;
 tvm::runtime::Module mod;
 DLDevice dev;
@@ -8,12 +9,10 @@ TVMDetector::TVMDetector(){}
 
 void TVMDetector::LoadModel(const std::string& model_path,int choice) 
 {
-    int device_type;
     if(choice == 1) 
     {
         dev = {static_cast<DLDeviceType>(kDLCPU), 0};
         device_type = kDLCPU;
-            
     }
     else if(choice == 2)
     {
@@ -46,40 +45,45 @@ void TVMDetector::LoadModel(const std::string& model_path,int choice)
 std::vector<std::vector<float>> TVMDetector::Detect(cv::Mat& image, float conf_threshold, float iou_threshold) 
 {
     cv::Mat resized_frame;
-
     tvm::runtime::NDArray input_array = tvm::runtime::NDArray::Empty({1, 3, 640, 640}, DLDataType{kDLFloat, 32, 1}, dev);
     tvm::runtime::NDArray output = tvm::runtime::NDArray::Empty({1, 7, 8400}, DLDataType{kDLFloat, 32, 1}, dev);
     tvm::runtime::PackedFunc set_input = mod.GetFunction("set_input");
     tvm::runtime::PackedFunc run = mod.GetFunction("run");
     tvm::runtime::PackedFunc get_output = mod.GetFunction("get_output");
+    tvm::runtime::PackedFunc sync=mod.GetFunction("sync");
 
     resized_frame = Preprocess(image, input_array);
+
     set_input("images", input_array);
     auto start_time = std::chrono::high_resolution_clock::now();
     run();
+    if (device_type == kDLCUDA) {
+        cudaDeviceSynchronize();
+    }
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time);
     std::cout<<"time taken :"<< duration.count()<<std::endl;
     get_output(0, output); 
     int output_size = 1;
-
     for (int i = 0; i < output->ndim; ++i) 
     {
         output_size *= output->shape[i];
     }
-
     float* data = new float[output_size];
-    float* output_data = static_cast<float*>(output->data);
 
     output.CopyToBytes(data, output_size * sizeof(float));
+
     int num_detections = output->shape[2];
-    return Postprocess(resized_frame, data, num_detections, conf_threshold, iou_threshold);
+  
+    std::vector<std::vector<float>> boxes_temp = Postprocess(resized_frame, data, num_detections, conf_threshold, iou_threshold);
+    delete[] data;
+    return boxes_temp;
 }
 
 cv::Mat TVMDetector::Preprocess(cv::Mat& frame, tvm::runtime::NDArray& input_array) 
 {
     cv::Mat resized_frame;
-    cv::resize(frame, resized_frame, cv::Size(640, 640));
+    cv::resize(frame, resized_frame, cv::Size(640, 640)); 
     resized_frame.convertTo(resized_frame, CV_32F, 1.0 / 255);
 
     vector<cv::Mat> channels(3);

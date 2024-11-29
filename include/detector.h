@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include "onnxruntime_cxx_api.h"
 #include <unordered_map>
+#include <cuda_runtime.h>
 
 class IDetector {
 public:
@@ -63,7 +64,7 @@ public:
     TVMDetector();
     void LoadModel(const std::string& modelPath,int ) override;
     std::vector<std::vector<float>> Detect(cv::Mat& image, float conf_threshold = 0.4f, float iou_threshold = 0.4f) override;
-
+    int device_type;
 protected:
     cv::Mat Preprocess(cv::Mat& image, tvm::runtime::NDArray& input_array);
     std::vector<std::vector<float>> Postprocess(cv::Mat& image, float* data, int num_detections, float conf_threshold, float iou_threshold);
@@ -102,15 +103,26 @@ class SafeQueue {
             data_queue.pop();
             return true;
         }
+        bool latest(T& t) {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            while (data_queue.empty()) {
+                if (finished) return false;
+                cond_var.wait(lock);
+            }
+            while(data_queue.size()>1) {
+                data_queue.pop();
+            }
+            t = data_queue.front();
+            data_queue.pop();
+            return true;
+        }
         void setFinished() {
             std::lock_guard<std::mutex> lock(queue_mutex);
             finished = true;
             cond_var.notify_all();
         }
-        void clear()
-        {
-            while(!data_queue.empty())
-            {
+        void clear() {
+            while(!data_queue.empty()) {
                 data_queue.pop();
             }
         }
@@ -135,7 +147,7 @@ private:
 class App {
 public:
     App(std::unique_ptr<DetectorFactory> factory);
-    void Run(std::string& modelPath, std::string& videoPath,int);
+    void Run(std::string& model_path, std::string& cameras_no, int, int);
 
 private:
     std::unique_ptr<DetectorFactory> detector_factory;

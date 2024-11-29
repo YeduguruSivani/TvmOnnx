@@ -5,24 +5,41 @@
 
 App::App(std::unique_ptr<DetectorFactory> factory) : detector_factory(std::move(factory)) {}
 
-void App::Run(std::string& model_path, std::string& video_path,int choice) {
-    if(video_path.size() == 1) {
-        sources = std::stoi(video_path);
+void App::Run(std::string& model_path, std::string& cameras_no, int processing_unit, int model_choice) {
+    if(cameras_no.size() == 1) {
+        sources = std::stoi(cameras_no);
     }
     auto detector = detector_factory->createDetector();
-    detector->LoadModel(model_path,choice);
-    Data data(video_path);
+    detector->LoadModel(model_path, processing_unit);
+    Data data(cameras_no);
 
     std::vector<SafeQueue<cv::Mat>> frame_queues(sources);
     std::vector<SafeQueue<cv::Mat>> processed_queues(sources);
 
     int fps = std::stoi(std::getenv("FPS"));
     const int frame_delay = 1000 / fps;
-    auto CaptureTask = [&]() {
 
+    auto CaptureTask = [&]() {
         std::vector<cv::Mat> frames(sources);
         auto next_frame_time = std::chrono::steady_clock::now();
-        int frame_interval = std::stoi(std::getenv("INFERENCE_INTERVAL"));
+        int frame_interval = 1;
+        if (model_choice == 1) {
+            if (processing_unit == 1) {
+                frame_interval = std::stoi(std::getenv("ONNX_CPU_INFERENCE_INTERVAL"));
+            }
+            else {
+                frame_interval = std::stoi(std::getenv("ONNX_GPU_INFERENCE_INTERVAL"));
+            }
+        }
+        else {
+            if (processing_unit == 1) {
+                frame_interval = std::stoi(std::getenv("TVM_CPU_INFERENCE_INTERVAL"));
+            }
+            else {
+                frame_interval = std::stoi(std::getenv("TVM_GPU_INFERENCE_INTERVAL"));
+            }
+        }
+        std::cout << "Frame interval :" << frame_interval << std::endl;
         while (true) {
             frames = data.GetData();
             for(int i=0;i<sources;i++)
@@ -56,7 +73,11 @@ void App::Run(std::string& model_path, std::string& video_path,int choice) {
             for(int i=0; i<sources; i++)
             {
                 if (frame_queues[i].dequeue(frames[i])) {
+                    auto start_time = std::chrono::high_resolution_clock::now();
                     n_boxes[i] = detector->Detect(frames[i], std::stof(std::getenv("CONF_THRESHOLD")), std::stof(std::getenv("IOU_THRESHOLD")));
+                    auto end_time = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time-start_time);
+                    std::cout<<"time taken for pipeline :"<< duration.count()<<std::endl;
                 }
                 frame_queues[i].clear();
             }
@@ -68,12 +89,10 @@ void App::Run(std::string& model_path, std::string& video_path,int choice) {
 
     auto WriteTask = [&]() {
         std::vector<cv::Mat> processed_frames(sources);
-        std::vector<cv::Mat> images(sources);
         while(!stop) {
             for (int i=0;i<sources;i++) {
                 if (processed_queues[i].dequeue(processed_frames[i])) {
                     cv::resize(processed_frames[i], processed_frames[i], cv::Size(640, 640));
-                    images[i] = processed_frames[i].clone();
                     int no_of_persons=0;
                     int no_of_chairs=0;
                     int empty_chairs=detector->DetectionLogic(n_boxes[i]);
@@ -107,7 +126,6 @@ void App::Run(std::string& model_path, std::string& video_path,int choice) {
                         "No of chairs " + std::to_string(no_of_chairs),
                         "Empty chairs " + std::to_string(empty_chairs)
                     };
-
                     cv::rectangle(processed_frames[i], cv::Point(370, 5), cv::Point(700, 110), (0,0,0), -1);
 
                     for(int j = 0; j < texts.size(); j++) {
@@ -131,22 +149,30 @@ void App::Run(std::string& model_path, std::string& video_path,int choice) {
     std::cout << "Video processing completed successfully." << std::endl;
 }
 
-Data::Data(std::string& video_path) {
+Data::Data(std::string& cameras_no) {
+    cv::VideoCapture cap;
     std::string cameras = std::getenv("CAMERAS");
-    if(video_path.size() == 1) {
-        sources = std::stoi(video_path);
-        for (int i=0; i<sources; i++) {
-            cv::VideoCapture cap = cv::VideoCapture((cameras[i*2]-'0'));
-            caps.push_back(cap);
-            if (!cap.isOpened())
-            {
-                std::cerr << "Error: Could not open or find the video file!\n";
-            }
+    sources = std::stoi(cameras_no);
+    int k=0;
+    for (int i=0; i<sources; i++) {
+        std::string temp = "";
+        while (cameras[k]!=','){
+            if (k >= cameras.length()) {
+                break;
+            };
+            temp = temp + cameras[k];
+            k++;
         }
-    } 
-    else {
-        caps.push_back(cv::VideoCapture(video_path));
-        if (!caps[0].isOpened())
+        k++;
+        std::cout << "Using camera :" << temp << std::endl;
+        if(temp.length() ==1){
+            cap = cv::VideoCapture(temp[0]-'0');
+        }
+        else{
+            cap = cv::VideoCapture(temp);
+        }
+        caps.push_back(cap);
+        if (!cap.isOpened())
         {
             std::cerr << "Error: Could not open or find the video file!\n";
         }
@@ -154,12 +180,12 @@ Data::Data(std::string& video_path) {
 }
 
 void Data::WriteData(std::vector<cv::Mat> processed_frames) {
-    std::cout << "Displaying frame" << std::endl;
     cv::Mat frame = processed_frames[0];
     for (int i=1; i<sources; i++) {
         cv::hconcat(frame, processed_frames[i], frame);
     }
-    cv::imshow("yolo11 inference", frame);
+    cv::namedWindow("Inference", cv::WINDOW_NORMAL);
+    cv::imshow("Inference", frame);
     if (cv::waitKey(10) == 'q') {
         for (int i=1; i<sources; i++) {
             caps[i].release();
